@@ -3,8 +3,9 @@
   const $ = id => document.getElementById(id);
   const L = window.LEVELS;
   const HINT_COST = 30, START_COINS = 60, AD_REWARD = 30, INTER_EVERY = 3;
-  let ysdk = null, player = null, vk = null;  // площадка: Яндекс Игры (ysdk) или ВКонтакте (vk = vkBridge)
-  const ADS = () => !!(ysdk || vk);
+  let ysdk = null, player = null, vk = null, ok = false;  // площадка: Яндекс Игры, ВКонтакте или Одноклассники
+  const ADS = () => !!(ysdk || vk || ok);
+  let okReward = null, okRewardReady = false;  // Одноклассники: ролик загружается заранее
   let S = load() || { lvl: 0, coins: START_COINS, found: [], bonus: [], hints: [], shuffled: null };
 
   // ---------- сохранение ----------
@@ -203,6 +204,7 @@
   $('dbl').onclick = () => rewardAd(() => { S.coins += reward; updCoins(); save(); toast('+' + reward + ' монет'); $('dbl').style.display = 'none'; });
 
   function interstitial(after) {
+    if (ok) { muted = true; try { FAPI.UI.showAd(); } catch (e) {} setTimeout(() => { muted = false; after(); }, 400); return; }
     if (ysdk) return ysdk.adv.showFullscreenAdv({ callbacks: { onOpen: () => { muted = true; }, onClose: () => { muted = false; after(); }, onError: () => { muted = false; after(); } } });
     muted = true;
     vk.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' }).catch(() => {}).finally(() => { muted = false; after(); });
@@ -211,6 +213,12 @@
     if (!ADS()) return;
     const fn = typeof onReward === 'function' ? onReward : () => { S.coins += AD_REWARD; updCoins(); save(); toast('+' + AD_REWARD + ' монет'); };
     const fail = () => { muted = false; toast('Реклама сейчас недоступна'); };
+    if (ok) {
+      if (!okRewardReady) { fail(); try { FAPI.UI.loadAd(); } catch (e) {} return; }
+      okReward = fn; okRewardReady = false; muted = true;
+      try { FAPI.UI.showLoadedAd(); } catch (e) { fail(); }
+      return;
+    }
     if (ysdk) return ysdk.adv.showRewardedVideo({ callbacks: {
       onOpen: () => { muted = true; }, onRewarded: fn, onClose: () => { muted = false; }, onError: fail } });
     muted = true;
@@ -246,6 +254,29 @@
     setTimeout(() => toast(`Ежедневный бонус: +${bonus} монет` + (S.streak ? ` (день ${S.streak + 1} подряд)` : '')), 900);
   }
   function boot() { if (booted) return; booted = true; startLevel(); daily(); if (ysdk) { ysdk.features?.LoadingAPI?.ready?.(); ysdk.features?.GameplayAPI?.start?.(); } }
+  // Одноклассники: игра открывается с параметрами api_server и apiconnection
+  if (/[?&]api_server=/.test(location.search) && /[?&]apiconnection=/.test(location.search)) {
+    window.API_callback = (method, result, data) => {
+      if (method === 'loadAd') okRewardReady = result === 'ok';
+      if (method === 'showLoadedAd') {
+        muted = false;
+        if (result === 'ok' && okReward) okReward(); else toast('Реклама сейчас недоступна');
+        okReward = null; setTimeout(() => { try { FAPI.UI.loadAd(); } catch (e) {} }, 15000);
+      }
+    };
+    const o = document.createElement('script');
+    o.src = 'https://api.ok.ru/js/fapi5.js';
+    o.onload = () => {
+      try {
+        const p = FAPI.Util.getRequestParameters();
+        FAPI.init(p.api_server, p.apiconnection, () => { ok = true; boot(); try { FAPI.UI.loadAd(); } catch (e) {} }, boot);
+      } catch (e) { boot(); }
+    };
+    o.onerror = boot;
+    setTimeout(boot, 3000);
+    document.head.appendChild(o);
+    return;
+  }
   // ВКонтакте: мини-приложение открывается с параметрами vk_* в адресе
   if (/[?&]vk_app_id=/.test(location.search)) {
     const b = document.createElement('script');
