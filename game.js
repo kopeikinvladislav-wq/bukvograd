@@ -190,6 +190,7 @@
     reward = 10 + lv.words.length * 2; S.coins += reward; updCoins(); save(); chord();
     $('winTxt').textContent = `Уровень ${S.lvl + 1} пройден. +${reward} монет`;
     $('dbl').style.display = ADS() ? 'inline-block' : 'none';
+    $('share').style.display = vk ? 'inline-block' : 'none';
     $('win').classList.add('on');
     if (ysdk) ysdk.features?.GameplayAPI?.stop?.();
   }
@@ -198,9 +199,16 @@
     const done = S.lvl;
     S.lvl = Math.min(S.lvl + 1, L.length - 1); S.found = []; S.bonus = []; S.hints = []; S.shuffled = null; save();
     if (done + 1 >= L.length) toast('Вы прошли все уровни! Новые скоро 🙂');
-    const go = () => { startLevel(); if (ysdk) ysdk.features?.GameplayAPI?.start?.(); };
+    const go = () => { startLevel(); vkFavorites(); if (ysdk) ysdk.features?.GameplayAPI?.start?.(); };
     if (ADS() && (done + 1) % INTER_EVERY === 0) interstitial(go); else go();
   };
+  // ВК: приглашение друзей и предложение добавить в избранное — бесплатный рост аудитории
+  $('share').onclick = () => { if (vk) vk.send('VKWebAppShowInviteBox').catch(() => {}); };
+  function vkFavorites() {
+    if (!vk || S.favAsked || S.lvl < 3) return;
+    S.favAsked = true; save();
+    vk.send('VKWebAppAddToFavorites').catch(() => {});
+  }
   $('dbl').onclick = () => rewardAd(() => { S.coins += reward; updCoins(); save(); toast('+' + reward + ' монет'); $('dbl').style.display = 'none'; });
 
   function interstitial(after) {
