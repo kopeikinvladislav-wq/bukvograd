@@ -234,7 +234,18 @@
   document.addEventListener('contextmenu', e => e.preventDefault());
 
   let booted = false;
-  function boot() { if (booted) return; booted = true; startLevel(); if (ysdk) { ysdk.features?.LoadingAPI?.ready?.(); ysdk.features?.GameplayAPI?.start?.(); } }
+  // ежедневный бонус: 20 монет, +10 за каждый день подряд (до 70)
+  function daily() {
+    const today = new Date().toISOString().slice(0, 10);
+    if (S.day === today) return;
+    const y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    S.streak = S.day === y ? Math.min((S.streak || 0) + 1, 6) : 0;
+    S.day = today;
+    const bonus = 20 + S.streak * 10;
+    S.coins += bonus; updCoins(); save();
+    setTimeout(() => toast(`Ежедневный бонус: +${bonus} монет` + (S.streak ? ` (день ${S.streak + 1} подряд)` : '')), 900);
+  }
+  function boot() { if (booted) return; booted = true; startLevel(); daily(); if (ysdk) { ysdk.features?.LoadingAPI?.ready?.(); ysdk.features?.GameplayAPI?.start?.(); } }
   // ВКонтакте: мини-приложение открывается с параметрами vk_* в адресе
   if (/[?&]vk_app_id=/.test(location.search)) {
     const b = document.createElement('script');
